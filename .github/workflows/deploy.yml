@@ -26,9 +26,10 @@ jobs:
       - run: npm ci
       - run: npm run build
         env:
-          # The real dashboard reads data.json from the bps-volunteer-data repo's Pages site.
-          # Set this as a repo variable (Settings > Secrets and variables > Actions > Variables).
-          VITE_DATA_URL: ${{ vars.VITE_DATA_URL }}
+          # Defaults to the bps-volunteer-data repo's GitHub Pages URL. Override with a
+          # repo variable (Settings > Secrets and variables > Actions > Variables) if that
+          # repo/owner ever changes.
+          VITE_DATA_URL: ${{ vars.VITE_DATA_URL || 'https://wkapri.github.io/bps-volunteer-data/data.json' }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

@@ -43,7 +43,7 @@
             "capacity": { "type": "integer", "minimum": 1 },
             "filled": { "type": "integer", "minimum": 0 },
             "fillPct": { "type": "integer", "minimum": 0, "maximum": 100 },
-            "deepLink": { "type": "string", "format": "uri" },
+            "deepLink": { "type": "string" },
             "note": { "type": "string" },
             "shifts": {
               "type": "array",
