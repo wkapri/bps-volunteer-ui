@@ -2,11 +2,13 @@
 
 React SPA for the Beecroft Public School P&C volunteer dashboard. Shows the
 canteen roster and upcoming events at a glance, and links straight through to
-SignUpGenius. One of three repos — see [`DESIGN.md`](DESIGN.md).
+SignUpGenius. See [`DESIGN.md`](DESIGN.md) for the full design.
 
 - `bps-volunteer-ui` — this repo (the SPA)
-- `bps-volunteer-cron` — hourly fetcher that builds `data.json`
-- `bps-volunteer-data` — hosts the generated `data.json`
+- [`bps-volunteer-backend`](https://github.com/wkapri/bps-volunteer-backend) —
+  hourly fetcher that builds and serves `data.json` (covers what `DESIGN.md`
+  calls `bps-volunteer-cron` *and* `bps-volunteer-data` — merged into one
+  repo; see that repo's README "Deviations from DESIGN.md")
 
 ## Develop
 
@@ -32,9 +34,10 @@ param: `?data=stale`, `?data=empty-events`, `?data=between-terms`, or
 
 ## Data source
 
-The build reads `VITE_DATA_URL` (the `bps-volunteer-data` Pages URL). Without it,
-the app falls back to the bundled sample fixture. In CI it comes from the
-`VITE_DATA_URL` Actions **variable**.
+The build reads `VITE_DATA_URL` (`bps-volunteer-backend`'s Pages URL). Without
+it, the app falls back to the bundled sample fixture. In CI it defaults to
+`https://wkapri.github.io/bps-volunteer-backend/data.json`, overridable via
+the `VITE_DATA_URL` Actions **variable**.
 
 ## Deploy
 
@@ -46,6 +49,6 @@ site or custom domain.
 ## Key files
 
 - [`src/data.ts`](src/data.ts) — the `data.json` type + status logic
-- [`schema/data.schema.json`](schema/data.schema.json) — JSON Schema (mirror; cron owns the canonical)
+- [`schema/data.schema.json`](schema/data.schema.json) — JSON Schema (mirror; `bps-volunteer-backend` owns the canonical)
 - [`src/lib/useVolunteerData.ts`](src/lib/useVolunteerData.ts) — fetch, cache, refresh
 - [`src/components/`](src/components) — Header, CanteenRow, EventsGrid, Footer, Banner, Skeleton

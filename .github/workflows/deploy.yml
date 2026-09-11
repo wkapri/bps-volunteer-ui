@@ -26,10 +26,11 @@ jobs:
       - run: npm ci
       - run: npm run build
         env:
-          # Defaults to the bps-volunteer-data repo's GitHub Pages URL. Override with a
-          # repo variable (Settings > Secrets and variables > Actions > Variables) if that
-          # repo/owner ever changes.
-          VITE_DATA_URL: ${{ vars.VITE_DATA_URL || 'https://wkapri.github.io/bps-volunteer-data/data.json' }}
+          # Defaults to bps-volunteer-backend's GitHub Pages URL (it now generates AND
+          # serves data.json — see that repo's README "Deviations from DESIGN.md").
+          # Override with a repo variable (Settings > Secrets and variables > Actions >
+          # Variables) if that repo/owner ever changes.
+          VITE_DATA_URL: ${{ vars.VITE_DATA_URL || 'https://wkapri.github.io/bps-volunteer-backend/data.json' }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

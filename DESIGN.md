@@ -3,7 +3,7 @@
 Status: **draft** · Last updated: 2026-09-10
 
 This is the canonical design doc for the Beecroft Public School P&C volunteer
-dashboard and its supporting jobs. It spans three repositories (see
+dashboard and its supporting jobs. It spans two repositories (see
 [Repositories](#repositories)) and lives in `bps-volunteer-ui`.
 
 ---
@@ -41,18 +41,25 @@ record for slots, sign-ups, reminders and (for now) confirmation emails.
 
 ## 2. Architecture overview
 
+> **Deviation from the original plan (see decisions log, §11):**
+> `bps-volunteer-cron` and `bps-volunteer-data` were merged into one repo,
+> `bps-volunteer-backend`. It writes `docs/data.json` and commits it to
+> itself using the workflow's automatic `GITHUB_TOKEN` — no cross-repo PAT to
+> create/rotate/expire, and every hourly run counts as activity on the repo
+> that hosts the scheduled workflow, so it can't hit GitHub's 60-day
+> scheduled-workflow auto-disable. Two repos total now, not three.
+
 ```
- SignUpGenius  ──►  bps-volunteer-cron  ──►  bps-volunteer-data  ──►  bps-volunteer-ui
-  (Pro API +        (GitHub Actions,          (data.json only,          (React SPA,
-   public sheet      hourly schedule)          served via Pages)         GitHub Pages)
-   data)
+ SignUpGenius  ──►  bps-volunteer-backend  ──►  bps-volunteer-ui
+  (Pro API +        (GitHub Actions, hourly;      (React SPA,
+   public sheet      writes + serves data.json      GitHub Pages)
+   data)             via its own GitHub Pages)
 ```
 
-- **`bps-volunteer-cron`** runs every hour on GitHub Actions. It reads canteen +
-  event data from SignUpGenius, computes status, and writes a single
-  `data.json`.
-- **`bps-volunteer-data`** holds only that generated `data.json`, published with
-  GitHub Pages. Kept separate from source code deliberately.
+- **`bps-volunteer-backend`** runs every hour on GitHub Actions. It reads
+  canteen + event data from SignUpGenius, computes status, writes
+  `docs/data.json`, and commits it back to itself — served by this same
+  repo's GitHub Pages (`/docs` folder).
 - **`bps-volunteer-ui`** is a static React SPA on GitHub Pages. On load (and
   periodically while open) it fetches `data.json` cross-origin and renders the
   dashboard.
@@ -67,11 +74,10 @@ shows how old the data is.
 | Repo | Contents | Hosting | Secrets |
 |---|---|---|---|
 | `bps-volunteer-ui` | React + Vite + TypeScript SPA. This `DESIGN.md`. Mirrored `data.json` TS type. | GitHub Pages (project site) | – |
-| `bps-volunteer-cron` | Node/TS fetcher, status logic, `data.json` writer. GitHub Actions workflow (hourly). **Owns the `data.json` schema.** | – (Actions only) | `SUG_API_KEY`, `DATA_REPO_TOKEN` |
-| `bps-volunteer-data` | Only `data.json` (+ a short README). History of hourly snapshots. | GitHub Pages (serves `data.json`) | – |
+| `bps-volunteer-backend` | Node/TS fetcher, status logic, `data.json` writer. **Owns the `data.json` schema.** GitHub Actions workflow (hourly) writes `docs/data.json` and commits it back to this same repo. | GitHub Pages, `/docs` folder (serves `data.json`) + GitHub Actions | `SUG_API_KEY` |
 
 **Ownership / continuity:** recommend creating a free GitHub **organisation**
-(e.g. `beecroft-pnc`) to hold all three repos, so ownership survives volunteers
+(e.g. `beecroft-pnc`) to hold both repos, so ownership survives volunteers
 rotating out. URLs also read better:
 `https://beecroft-pnc.github.io/bps-volunteer-ui/`. A personal account works for
 v1 but you can't choose an arbitrary `*.github.io` subdomain — that's the account
@@ -199,12 +205,16 @@ percentage.
 
 ---
 
-## 5. `bps-volunteer-cron`
+## 5. `bps-volunteer-backend`
+
+*(covers what this doc originally split into `bps-volunteer-cron` and
+`bps-volunteer-data` — merged, see §2 and §11.)*
 
 - **Runtime:** Node + TypeScript, run by GitHub Actions on
   `schedule: cron` — hourly, every day. (Cadence may be relaxed later.)
-- **Inputs:** `SUG_API_KEY` (SignUpGenius Pro key), `DATA_REPO_TOKEN`
-  (fine-grained PAT / deploy key with write access to `bps-volunteer-data`).
+- **Inputs:** `SUG_API_KEY` (SignUpGenius Pro key) only. Committing
+  `docs/data.json` back to this same repo uses the workflow's automatic
+  `GITHUB_TOKEN` (`permissions: contents: write`) — no cross-repo PAT needed.
 - **Steps:**
   1. Resolve the canteen sign-up (title prefix / id override).
   2. Get canteen per-day, per-shift capacity + filled + the per-date anchor id
@@ -216,23 +226,26 @@ percentage.
      report, description and thumbnail.
   4. Compute `status` / `fillPct` per the rules above; apply weekday filter,
      closed detection, 3pm and midnight rollovers in `Australia/Sydney`.
-  5. Serialise `data.json`. If the SignUpGenius reads all succeeded, commit &
-     push to `bps-volunteer-data` (always — `generatedAt` changes each run so
-     there is always a diff; commit message tagged `[skip ci]`).
+  5. Serialise `data.json` to `docs/data.json`. If the SignUpGenius reads all
+     succeeded, commit & push to this repo (always — `generatedAt` changes
+     each run so there is always a diff; commit message tagged `[skip ci]`).
+     Served via this repo's own GitHub Pages (`/docs` folder), e.g.
+     `https://wkapri.github.io/bps-volunteer-backend/data.json`, with
+     `Access-Control-Allow-Origin: *` so the UI fetches it cross-origin with
+     no proxy.
 - **API budget:** hourly × (≈1 canteen + ~4–6 events × 1 report call) ≈ **well
   under the 500/day** Silver limit even before considering the keyless canteen
   path.
 
 ---
 
-## 6. `bps-volunteer-data`
+## 6. `bps-volunteer-data` (retired)
 
-- Contains `data.json` and a one-paragraph README pointing back here.
-- GitHub Pages enabled → stable URL, e.g.
-  `https://beecroft-pnc.github.io/bps-volunteer-data/data.json`.
-- Serves with `Access-Control-Allow-Origin: *`, so the UI fetches it
-  cross-origin with no proxy.
-- Hourly commits are expected and fine; this repo is data, not code.
+Originally a separate repo holding only `data.json`. Merged into
+`bps-volunteer-backend` (§2, §5, §11) — `data.json` now lives at
+`docs/data.json` there, served by that repo's own GitHub Pages. Kept as a
+numbered section so cross-references elsewhere in this doc (§8, §10, …) don't
+shift.
 
 ---
 
@@ -331,7 +344,7 @@ percentage.
 Not built in v1; captured so the schema/repo choices don't block it.
 
 - **When:** every day at **09:00 Australia/Sydney** (separate scheduled workflow
-  in `bps-volunteer-cron`).
+  in `bps-volunteer-backend`).
 - **Content:** that day's canteen sign-ups — **names per shift** (this job reads
   the SignUpGenius API directly; names never enter `data.json`). Possible future
   extension: a few days ahead / gap alerts — **out of scope, idea to ponder.**
@@ -340,31 +353,38 @@ Not built in v1; captured so the schema/repo choices don't block it.
   `dawidd6/action-send-mail` action (needs 2FA on the Google account, an app
   password stored as `MAIL_USERNAME` / `MAIL_PASSWORD` secrets). Alternative:
   Resend (100/day free, wants domain verification).
-- **Recipients:** canteen manager + William. A plain list in the cron repo
-  config is fine for now.
+- **Recipients:** canteen manager + William. A plain list in the
+  `bps-volunteer-backend` repo config is fine for now.
 
 ---
 
 ## 9. Milestones
 
 1. **M0 — this doc agreed.**
-2. **M1 — schema + fixtures.** ✅ *(in progress)* `data.json` v1 shape frozen.
-   - `schema/data.schema.json` — JSON Schema (mirror; cron owns the canonical).
+2. **M1 — schema + fixtures.** ✅ `data.json` v1 shape frozen.
+   - `schema/data.schema.json` — JSON Schema (mirror; `bps-volunteer-backend`
+     owns the canonical).
    - `src/data.ts` — TS types + `statusFromPct` + `STATUS_META`.
    - `public/fixtures/*.json` — sample, empty-events, between-terms, stale
      (all validate; see `public/fixtures/README.md`).
-   - Remaining: wire `ajv` schema validation into cron CI.
+   - `ajv` schema validation wired into `bps-volunteer-backend` CI (`npm run
+     validate`, run after every generate before publishing). ✅
 3. **M2 — UI against fixtures.** ✅ Scaffold migrated JS→TS. Full SPA built and
    styled against the fixtures: header + crest placeholder, canteen row
    (scroll-snap, desktop arrows, closed tiles, deep links), events grid,
    skeleton loading, stale banner, error + localStorage fallback, empty/
    between-terms states. `.github/workflows/deploy.yml` publishes to Pages.
-   Remaining: real school crest asset, final footer links, point `VITE_DATA_URL`
-   at the live data repo.
-4. **M3 — cron, canteen only.** Resolve canteen sign-up, produce real canteen
-   section (incl. deep links), publish to `bps-volunteer-data`. Point UI at it.
-5. **M4 — cron, events.** Add one-off events to `data.json`; UI events grid goes
-   live.
+   Remaining: real school crest asset, final footer links.
+4. **M3 — cron, canteen only.** ✅ *(mostly)* `bps-volunteer-backend` resolves
+   the real canteen sign-up, computes per-day/per-shift status against live
+   SignUpGenius data, and commits `docs/data.json` to itself hourly, served
+   via its own Pages. `VITE_DATA_URL` defaults to that URL. Remaining: confirm
+   the deep-link anchor against a real browser click-through (§10, still
+   flagged unverified) and confirm `SUG_API_KEY`/Pages are live in production
+   (see `bps-volunteer-backend`'s README).
+5. **M4 — cron, events.** ✅ *(mostly)* Non-canteen active sign-ups are fetched,
+   summed into `capacity`/`filled`/`status`, and included in `data.json`; UI
+   events grid renders them. Remaining: real description/image source (§10).
 6. **M5 — hardening.** Failure modes, stale banner, localStorage cache,
    accessibility pass, canteen-manager runbook.
 7. **M6 (later) — notification job.**
@@ -421,7 +441,13 @@ Not built in v1; captured so the schema/repo choices don't block it.
 ## 11. Decisions log
 
 - SPA reads a single public `data.json`; SignUpGenius stays system of record.
-- Three repos: `bps-volunteer-ui`, `bps-volunteer-cron`, `bps-volunteer-data`.
+- Two repos: `bps-volunteer-ui`, `bps-volunteer-backend`. Originally planned
+  as three (`-ui`, `-cron`, `-data`); merged `-cron` and `-data` into
+  `bps-volunteer-backend` to avoid a cross-repo PAT (expires; needs manual
+  rotation) and the risk of GitHub's 60-day scheduled-workflow auto-disable
+  hitting a repo that only ever pushed to a *different* repo. Trade-off:
+  hourly data commits now live in the same repo as the fetcher's source code,
+  rather than isolated — accepted as the smaller cost.
 - `data.json` regenerated hourly, every day; cron never overwrites good data
   with a failed run.
 - Data is **counts only, no names**. Names live only in the (later) email job.

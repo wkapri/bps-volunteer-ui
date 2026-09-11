@@ -1,8 +1,8 @@
 /**
- * The `data.json` contract between `bps-volunteer-cron` (producer) and
+ * The `data.json` contract between `bps-volunteer-backend` (producer) and
  * `bps-volunteer-ui` (consumer). Canonical description: DESIGN.md section 4.
  *
- * This file is the UI's mirror of the schema owned by bps-volunteer-cron.
+ * This file is the UI's mirror of the schema owned by bps-volunteer-backend.
  * Keep it in sync with schema/data.schema.json.
  */
 
