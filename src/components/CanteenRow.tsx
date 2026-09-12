@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { Canteen, CanteenDay } from "../data";
 import { STATUS_META } from "../data";
 import { dayMonth, weekdayShort } from "../lib/format";
@@ -6,6 +6,30 @@ import { StatusBadge } from "./StatusBadge";
 
 export function CanteenRow({ canteen }: { canteen: Canteen }) {
   const scrollerRef = useRef<HTMLUListElement>(null);
+
+  // Desktop convenience: a plain vertical mouse wheel over the row scrolls
+  // it horizontally, instead of only working via drag or the ‹ › buttons.
+  // Native non-passive listener (not React's onWheel) so preventDefault()
+  // reliably stops the page itself from scrolling underneath.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth) return; // nothing to scroll
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; // let real horizontal gestures (trackpad, shift+wheel) through untouched
+
+      const atStart = el.scrollLeft <= 0;
+      const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+      if ((e.deltaY < 0 && atStart) || (e.deltaY > 0 && atEnd)) return; // at the edge: let the page scroll instead of trapping the cursor
+
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [canteen.days.length]);
 
   const scrollBy = (dir: 1 | -1) => {
     const el = scrollerRef.current;
