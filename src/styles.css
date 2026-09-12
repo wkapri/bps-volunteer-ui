@@ -172,13 +172,11 @@ a {
   display: flex;
   gap: 12px;
   overflow-x: auto;
-  scroll-snap-type: x mandatory;
   scrollbar-width: thin;
 }
 .canteen-row > li {
   flex: 0 0 auto;
   width: clamp(140px, calc((100% - 48px) / 5), 190px);
-  scroll-snap-align: start;
 }
 
 .tile {
