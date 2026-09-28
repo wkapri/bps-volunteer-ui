@@ -50,7 +50,7 @@ export function CanteenRow({ canteen }: { canteen: Canteen }) {
   );
 }
 
-function CanteenDayTile({ day, signupUrl }: { day: CanteenDay; signupUrl: string }) {
+function CanteenDayTile({ day, signupUrl }: { day: CanteenDay; signupUrl: string | null }) {
   if (day.status === "closed") {
     return (
       <div className="tile tile--closed" aria-label={`${day.weekday} ${dayMonth(day.date)}, canteen closed`}>
@@ -66,7 +66,7 @@ function CanteenDayTile({ day, signupUrl }: { day: CanteenDay; signupUrl: string
   return (
     <a
       className={`tile tile--${day.status}`}
-      href={day.deepLink || signupUrl}
+      href={day.deepLink || signupUrl || "https://www.signupgenius.com"}
       target="_blank"
       rel="noopener noreferrer"
       aria-label={`${label}. Opens SignUpGenius.`}
