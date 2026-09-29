@@ -5,10 +5,8 @@ canteen roster and upcoming events at a glance, and links straight through to
 SignUpGenius. See [`DESIGN.md`](DESIGN.md) for the full design.
 
 - `bps-volunteer-ui` — this repo (the SPA)
-- [`bps-volunteer-backend`](https://github.com/wkapri/bps-volunteer-backend) —
-  hourly fetcher that builds and serves `data.json` (covers what `DESIGN.md`
-  calls `bps-volunteer-cron` *and* `bps-volunteer-data` — merged into one
-  repo; see that repo's README "Deviations from DESIGN.md")
+- [`bps-volunteer-backend2`](https://github.com/wkapri/bps-volunteer-backend2) —
+  Google Apps Script fetcher that computes and serves the data
 
 ## Develop
 
@@ -19,7 +17,7 @@ npm run dev
 
 Opens against `public/fixtures/data.sample.json`. Switch fixture with a query
 param: `?data=stale`, `?data=empty-events`, `?data=between-terms`, or
-`?data=https://…/data.json` for a real URL. Fixtures are described in
+`?data=https://…` for a real URL. Fixtures are described in
 [`public/fixtures/README.md`](public/fixtures/README.md).
 
 ## Scripts
@@ -34,21 +32,25 @@ param: `?data=stale`, `?data=empty-events`, `?data=between-terms`, or
 
 ## Data source
 
-The build reads `VITE_DATA_URL` (`bps-volunteer-backend`'s Pages URL). Without
-it, the app falls back to the bundled sample fixture. In CI it defaults to
-`https://wkapri.github.io/bps-volunteer-backend/data.json`, overridable via
-the `VITE_DATA_URL` Actions **variable**.
+The build reads `VITE_DATA_URL` (the `bps-volunteer-backend2` Apps Script web
+app's `/exec` URL). Without it, the app falls back to the bundled sample
+fixture.
 
 ## Deploy
 
-`.github/workflows/deploy.yml` builds and publishes to GitHub Pages on push to
-`main`. Set the Pages source to "GitHub Actions". The Vite `base` defaults to
-`/bps-volunteer-ui/`; override with the `VITE_BASE` env var for a user/org root
-site or custom domain.
+Firebase Hosting. Build with the right base path and data URL, then deploy:
+
+```bash
+VITE_BASE=/ VITE_DATA_URL="https://script.google.com/macros/s/.../exec" npm run build
+firebase deploy --only hosting
+```
+
+(On Windows Git Bash, prefix with `MSYS_NO_PATHCONV=1` — otherwise
+`VITE_BASE=/` gets mangled into a local filesystem path.)
 
 ## Key files
 
 - [`src/data.ts`](src/data.ts) — the `data.json` type + status logic
-- [`schema/data.schema.json`](schema/data.schema.json) — JSON Schema (mirror; `bps-volunteer-backend` owns the canonical)
+- [`schema/data.schema.json`](schema/data.schema.json) — JSON Schema (mirror; `bps-volunteer-backend2` owns the canonical)
 - [`src/lib/useVolunteerData.ts`](src/lib/useVolunteerData.ts) — fetch, cache, refresh
 - [`src/components/`](src/components) — Header, CanteenRow, EventsGrid, Footer, Banner, Skeleton

@@ -1,6 +1,6 @@
 # BPS P&C Volunteer Dashboard — Design
 
-Status: **draft** · Last updated: 2026-09-10
+Status: **draft** · Last updated: 2026-09-29
 
 This is the canonical design doc for the Beecroft Public School P&C volunteer
 dashboard and its supporting jobs. It spans two repositories (see
@@ -32,8 +32,6 @@ record for slots, sign-ups, reminders and (for now) confirmation emails.
 
 - No authentication, no admin UI, no write-back to SignUpGenius.
 - No per-volunteer data on the dashboard (counts only).
-- Notification/digest email to the canteen manager — **designed here, built
-  later** (see [§8](#8-canteen-notification-job-later)).
 - "Save the date" events that don't exist in SignUpGenius yet.
 - Per-role breakdown within a one-off event.
 
@@ -41,31 +39,25 @@ record for slots, sign-ups, reminders and (for now) confirmation emails.
 
 ## 2. Architecture overview
 
-> **Deviation from the original plan (see decisions log, §11):**
-> `bps-volunteer-cron` and `bps-volunteer-data` were merged into one repo,
-> `bps-volunteer-backend`. It writes `docs/data.json` and commits it to
-> itself using the workflow's automatic `GITHUB_TOKEN` — no cross-repo PAT to
-> create/rotate/expire, and every hourly run counts as activity on the repo
-> that hosts the scheduled workflow, so it can't hit GitHub's 60-day
-> scheduled-workflow auto-disable. Two repos total now, not three.
-
 ```
- SignUpGenius  ──►  bps-volunteer-backend  ──►  bps-volunteer-ui
-  (Pro API +        (GitHub Actions, hourly;      (React SPA,
-   public sheet      writes + serves data.json      GitHub Pages)
-   data)             via its own GitHub Pages)
+ SignUpGenius  ──►  bps-volunteer-backend2  ──►  bps-volunteer-ui
+  (Pro API +        (Google Apps Script,          (React SPA,
+   public sheet      hourly time trigger;          Firebase Hosting)
+   data)             PropertiesService +
+                      doGet web app)
 ```
 
-- **`bps-volunteer-backend`** runs every hour on GitHub Actions. It reads
-  canteen + event data from SignUpGenius, computes status, writes
-  `docs/data.json`, and commits it back to itself — served by this same
-  repo's GitHub Pages (`/docs` folder).
-- **`bps-volunteer-ui`** is a static React SPA on GitHub Pages. On load (and
-  periodically while open) it fetches `data.json` cross-origin and renders the
+- **`bps-volunteer-backend2`** runs hourly on a Google Apps Script time
+  trigger. It reads canteen + event data from SignUpGenius, computes status,
+  and stores the result in `PropertiesService`. A `doGet` web app serves that
+  as JSON.
+- **`bps-volunteer-ui`** is a static React SPA on Firebase Hosting. On load (and
+  periodically while open) it fetches the JSON cross-origin and renders the
   dashboard.
 
-If the cron fails, it **does not overwrite** the last good `data.json`. The UI
-shows how old the data is.
+If a run fails, it **does not overwrite** the last good data — `doGet` keeps
+serving whatever was last stored successfully. The UI shows how old the data
+is.
 
 ---
 
@@ -73,23 +65,18 @@ shows how old the data is.
 
 | Repo | Contents | Hosting | Secrets |
 |---|---|---|---|
-| `bps-volunteer-ui` | React + Vite + TypeScript SPA. This `DESIGN.md`. Mirrored `data.json` TS type. | GitHub Pages (project site) | – |
-| `bps-volunteer-backend` | Node/TS fetcher, status logic, `data.json` writer. **Owns the `data.json` schema.** GitHub Actions workflow (hourly) writes `docs/data.json` and commits it back to this same repo. | GitHub Pages, `/docs` folder (serves `data.json`) + GitHub Actions | `SUG_API_KEY` |
+| `bps-volunteer-ui` | React + Vite + TypeScript SPA. This `DESIGN.md`. Mirrored `data.json` TS type. | Firebase Hosting | – |
+| `bps-volunteer-backend2` | Apps Script fetcher, status logic, `data.json`-shaped web app. **Owns the `data.json` schema.** | Google Apps Script (time trigger + web app) | `SUG_API_KEY` (Script Property) |
 
-**Ownership / continuity:** recommend creating a free GitHub **organisation**
-(e.g. `beecroft-pnc`) to hold both repos, so ownership survives volunteers
-rotating out. URLs also read better:
-`https://beecroft-pnc.github.io/bps-volunteer-ui/`. A personal account works for
-v1 but you can't choose an arbitrary `*.github.io` subdomain — that's the account
-or org name. A custom domain (e.g. `volunteer.beecroftpnc.org.au` via `CNAME`)
-can be added later if the P&C gets one.
+Both repos live under the P&C's own accounts (GitHub + the school's Google
+Workspace), so ownership survives volunteers rotating out.
 
 ---
 
 ## 4. Data model & `data.json` contract
 
-`data.json` is the entire contract between cron and UI. It is public — **counts
-only, never names**.
+`data.json` is the entire contract between the backend and UI. It is public —
+**counts only, never names**.
 
 ### 4.1 Shape
 
@@ -163,8 +150,8 @@ canteen slot date) that has **zero slots** in the source data → `status:
 
 **Day rollover ("today"):** a canteen day stops being shown at **15:00
 Australia/Sydney** on that date (both shifts effectively done). Before 3pm, today
-still appears with its live status. The cron runs in UTC and must convert with a
-DST-aware library (`Australia/Sydney`).
+still appears with its live status. The backend runs in UTC and must convert with
+a DST-aware method (`Australia/Sydney`).
 
 **Status thresholds (v1 — same formula for canteen days and events):**
 
@@ -183,83 +170,64 @@ shift/critical role is completely empty).
 midnight** after the event date passes. Sorted **soonest first** in the UI.
 
 **Identifying the canteen sign-up:** match a configurable title prefix
-(`Canteen Volunteer*`) with an optional explicit `signupId` override in cron
-config. The canteen manager follows a runbook to name each term's sign-up
-consistently.
+(`Canteen Volunteer*`) against the live active sign-ups list — fully automatic,
+every run. The canteen manager follows a runbook to name each term's sign-up
+consistently. No manual sign-up ID anywhere; a new term's sign-up or a new event
+is picked up on the next hourly run with zero config changes.
 
-**Event capacity math:** intended to come from a single
-`/signups/report/all/{signupid}/` call per event (to be confirmed against a real
-key — see [§10](#10-open-questions--to-verify)). `capacity` = sum of slot
-quantities; `filled` = sum of taken quantities; roll up to one event-level
-percentage.
+**Event capacity math:** from a single `/signups/report/all/{signupid}/` call
+per event (fallback path — the public sheet endpoint is tried first). `capacity`
+= sum of slot quantities; `filled` = sum of taken quantities; roll up to one
+event-level percentage.
 
 ### 4.3 Failure behaviour
 
 - Any error fetching/parsing SignUpGenius → **abort the run, keep the previous
-  `data.json`**. Never publish a partial or empty file.
+  data**. Never publish a partial or empty result.
 - Transient partial failure (e.g. one event 500s) → skip that event, record a
-  `diagnostics.warnings` entry, publish the rest. **After 3 failed events in a
-  run, email William** (reuses the notification-job mail path) and still publish
-  what succeeded.
+  `diagnostics.warnings` entry, publish the rest.
 - The UI treats `generatedAt` age as the single source of truth for freshness.
 
 ---
 
-## 5. `bps-volunteer-backend`
+## 5. `bps-volunteer-backend2`
 
-*(covers what this doc originally split into `bps-volunteer-cron` and
-`bps-volunteer-data` — merged, see §2 and §11.)*
-
-- **Runtime:** Node + TypeScript, run by GitHub Actions on
-  `schedule: cron` — hourly, every day. (Cadence may be relaxed later.)
-- **Inputs:** `SUG_API_KEY` (SignUpGenius Pro key) only. Committing
-  `docs/data.json` back to this same repo uses the workflow's automatic
-  `GITHUB_TOKEN` (`permissions: contents: write`) — no cross-repo PAT needed.
+- **Runtime:** Google Apps Script, on an hourly time-driven trigger.
+- **Inputs:** `SUG_API_KEY` (SignUpGenius Pro key), stored as a Script
+  Property.
 - **Steps:**
-  1. Resolve the canteen sign-up (title prefix / id override).
+  1. Resolve the canteen sign-up (title prefix match — automatic).
   2. Get canteen per-day, per-shift capacity + filled + the per-date anchor id
      needed for the deep link (`<slotid>-date-wrap`). Preferred source: the
-     **public sign-up sheet data endpoint** (no key, no documented rate limit) —
-     see [§10](#10-open-questions--to-verify). Fallback: key API + bare event URL
-     (no deep link).
+     **public sign-up sheet data endpoint** (no key, no documented rate limit,
+     confirmed working — see [§9](#9-open-questions--to-verify)). Fallback: key
+     API + bare event URL (no deep link).
   3. List active sign-ups; treat every non-canteen one as an event; fetch its
-     report, description and thumbnail.
+     report, description and thumbnail the same way (public endpoint first,
+     key-API fallback).
   4. Compute `status` / `fillPct` per the rules above; apply weekday filter,
      closed detection, 3pm and midnight rollovers in `Australia/Sydney`.
-  5. Serialise `data.json` to `docs/data.json`. If the SignUpGenius reads all
-     succeeded, commit & push to this repo (always — `generatedAt` changes
-     each run so there is always a diff; commit message tagged `[skip ci]`).
-     Served via this repo's own GitHub Pages (`/docs` folder), e.g.
-     `https://wkapri.github.io/bps-volunteer-backend/data.json`, with
-     `Access-Control-Allow-Origin: *` so the UI fetches it cross-origin with
-     no proxy.
-- **API budget:** hourly × (≈1 canteen + ~4–6 events × 1 report call) ≈ **well
-  under the 500/day** Silver limit even before considering the keyless canteen
-  path.
+  5. On full success, store the result in `PropertiesService`. A `doGet` web
+     app serves whatever's currently stored, success or not — a failed run
+     just leaves the last good data in place, never overwrites it.
+- **API budget:** hourly × (≈1 canteen + a handful of events, mostly served by
+  the keyless public endpoint) is well under any SignUpGenius rate limit.
+- **Canteen notification email:** a separate function (`sendCanteenSummary`,
+  optional daily trigger) emails the canteen manager the upcoming days' actual
+  volunteer names and contact info — see [§7](#7-canteen-notification-job).
 
 ---
 
-## 6. `bps-volunteer-data` (retired)
+## 6. `bps-volunteer-ui` — the SPA
 
-Originally a separate repo holding only `data.json`. Merged into
-`bps-volunteer-backend` (§2, §5, §11) — `data.json` now lives at
-`docs/data.json` there, served by that repo's own GitHub Pages. Kept as a
-numbered section so cross-references elsewhere in this doc (§8, §10, …) don't
-shift.
-
----
-
-## 7. `bps-volunteer-ui` — the SPA
-
-### 7.1 Stack
+### 6.1 Stack
 
 - **React 19 + Vite + TypeScript**, hand-written CSS (no Tailwind / component
   lib — the app is small and has a strong custom look).
-- Existing scaffold is JS; migrate to TS as first task.
-- Deployed to GitHub Pages via `actions/deploy-pages` on push to `main`.
-- No backend, no analytics (v1).
+- Deployed to Firebase Hosting (`firebase deploy`).
+- No analytics backend of its own; a GA4 tag is embedded for basic usage stats.
 
-### 7.2 Layout
+### 6.2 Layout
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -288,7 +256,7 @@ shift.
 └────────────────────────────────────────────────────────┘
 ```
 
-### 7.3 Components & behaviour
+### 6.3 Components & behaviour
 
 - **Header:** school crest + "Beecroft Public School P&C" wordmark. Blue
   (crest blue) primary. Friendly/rounded style.
@@ -316,9 +284,9 @@ shift.
   - `red` ✕ "Needs volunteers"
   - `closed` – "Canteen closed"
 
-### 7.4 Data fetching & runtime states
+### 6.4 Data fetching & runtime states
 
-- Fetch `data.json` on load; **re-fetch every ~15 min and on tab
+- Fetch data on load; **re-fetch every ~15 min and on tab
   `focus`/`visibilitychange`**.
 - **Loading:** skeleton tiles/cards matching final layout (gentle pulse), no
   spinner, no layout shift.
@@ -339,97 +307,87 @@ shift.
 
 ---
 
-## 8. Canteen notification job (later)
+## 7. Canteen notification job
 
-Not built in v1; captured so the schema/repo choices don't block it.
+Built in `bps-volunteer-backend2` (`Notify.js`, `sendCanteenSummary`).
 
-- **When:** every day at **09:00 Australia/Sydney** (separate scheduled workflow
-  in `bps-volunteer-backend`).
-- **Content:** that day's canteen sign-ups — **names per shift** (this job reads
-  the SignUpGenius API directly; names never enter `data.json`). Possible future
-  extension: a few days ahead / gap alerts — **out of scope, idea to ponder.**
+- **When:** optional daily trigger (`setupNotifyTrigger`, ~9pm Sydney); can
+  also be run manually.
+- **Content:** upcoming canteen sign-ups — **names, phone, email per shift**
+  (this job calls the SignUpGenius key API directly; names never enter the
+  public `data.json`).
+- **Window:** configurable via `NOTIFY_DAYS_AHEAD` Script Property (default 7
+  days ahead).
 - **Scope:** canteen only. No one-off events.
-- **Channel:** email. Simplest path = **Gmail SMTP + App Password** with the
-  `dawidd6/action-send-mail` action (needs 2FA on the Google account, an app
-  password stored as `MAIL_USERNAME` / `MAIL_PASSWORD` secrets). Alternative:
-  Resend (100/day free, wants domain verification).
-- **Recipients:** canteen manager + William. A plain list in the
-  `bps-volunteer-backend` repo config is fine for now.
+- **Channel:** email via Apps Script's `MailApp` — free under the Workspace, no
+  SMTP/app-password setup.
+- **Recipients:** `NOTIFY_EMAILS` Script Property, comma-separated list.
 
 ---
 
-## 9. Milestones
+## 8. Milestones
 
 1. **M0 — this doc agreed.**
 2. **M1 — schema + fixtures.** ✅ `data.json` v1 shape frozen.
-   - `schema/data.schema.json` — JSON Schema (mirror; `bps-volunteer-backend`
+   - `schema/data.schema.json` — JSON Schema (mirror; `bps-volunteer-backend2`
      owns the canonical).
    - `src/data.ts` — TS types + `statusFromPct` + `STATUS_META`.
    - `public/fixtures/*.json` — sample, empty-events, between-terms, stale
      (all validate; see `public/fixtures/README.md`).
-   - `ajv` schema validation wired into `bps-volunteer-backend` CI (`npm run
-     validate`, run after every generate before publishing). ✅
-3. **M2 — UI against fixtures.** ✅ Scaffold migrated JS→TS. Full SPA built and
-   styled against the fixtures: header + crest placeholder, canteen row
-   (scroll-snap, desktop arrows, closed tiles, deep links), events grid,
-   skeleton loading, stale banner, error + localStorage fallback, empty/
-   between-terms states. `.github/workflows/deploy.yml` publishes to Pages.
-   Remaining: real school crest asset, final footer links.
-4. **M3 — cron, canteen only.** ✅ *(mostly)* `bps-volunteer-backend` resolves
-   the real canteen sign-up, computes per-day/per-shift status against live
-   SignUpGenius data, and commits `docs/data.json` to itself hourly, served
-   via its own Pages. `VITE_DATA_URL` defaults to that URL. Remaining: confirm
-   the deep-link anchor against a real browser click-through (§10, still
-   flagged unverified) and confirm `SUG_API_KEY`/Pages are live in production
-   (see `bps-volunteer-backend`'s README).
-5. **M4 — cron, events.** ✅ *(mostly)* Non-canteen active sign-ups are fetched,
-   summed into `capacity`/`filled`/`status`, and included in `data.json`; UI
-   events grid renders them. Remaining: real description/image source (§10).
-6. **M5 — hardening.** Failure modes, stale banner, localStorage cache,
-   accessibility pass, canteen-manager runbook.
-7. **M6 (later) — notification job.**
+3. **M2 — UI against fixtures.** ✅ Full SPA built and styled against the
+   fixtures: header + crest, canteen row (scroll-snap, desktop arrows, closed
+   tiles, deep links), events grid, skeleton loading, stale banner, error +
+   localStorage fallback, empty/between-terms states. Deployed via Firebase
+   Hosting.
+4. **M3 — backend, canteen.** ✅ `bps-volunteer-backend2` resolves the real
+   canteen sign-up automatically, computes per-day/per-shift status against
+   live SignUpGenius data hourly, served via its web app. Deep-link anchor
+   confirmed working against a real browser click-through.
+5. **M4 — backend, events.** ✅ Non-canteen active sign-ups are fetched, summed
+   into `capacity`/`filled`/`status`, and included in the served data; UI
+   events grid renders them.
+6. **M5 — hardening.** ✅ Failure modes (never overwrite good data), stale
+   banner, localStorage cache, accessibility pass in place. Canteen-manager
+   runbook still to write.
+7. **M6 — notification job.** ✅ Built — see [§7](#7-canteen-notification-job).
 
 ---
 
-## 10. Open questions / to verify
+## 9. Open questions / to verify
 
-- [ ] **Deep-link source.** Confirm, with a real Pro API key against the real
-      canteen sign-up, whether `slotid` (the per-date anchor id
-      `<slotid>-date-wrap`) is obtainable from `/signups/report/all/{id}/` or
-      only from the **public sign-up sheet data endpoint**
-      (`SUGboxAPI.cfm?go=s.getSignupInfo`, POST, keyless). Deep linking to a
-      date is **confirmed working** in the browser; the question is purely how
-      the cron gets the id. Fallback: link to the bare event URL.
+- [x] **Deep-link source.** Confirmed: the per-date `slotid` comes from the
+      **public sign-up sheet data endpoint**
+      (`SUGboxAPI.cfm?go=s.getSignupInfo`, POST, keyless), not the key API.
 - [ ] **Event data in one call.** Confirm `/signups/report/all/{signupid}/`
       returns enough to compute total vs filled capacity and to read the event
       description + thumbnail, or whether extra calls
       (`/signups/created/active/`, `available`/`filled`) are needed.
-- [ ] **`filled` = quantity taken, not participant count.** SignUpGenius slots
+- [x] **`filled` = quantity taken, not participant count.** SignUpGenius slots
       can have qty-per-signup (Working Bee: 3 people signed up for 6 spots).
       Sum `qtytaken` / `myqty`, not `participantcount`.
 - [ ] **Not every slot is a "volunteer needed" slot.** Working Bee has
       "BBQ eaters ×200", "Useful tools to bring ×20" — a naive
       `filled / Σqty` gives 7/327 = 2% and screams "desperate" when it isn't.
-      Options: (a) cron config listing which slot labels/itemids count toward
+      Options: (a) config listing which slot labels/itemids count toward
       the indicator per event; (b) ignore slots with qty above a threshold
       (e.g. >30); (c) manager convention (real volunteer slots only). **v1
       ships the naive number** (per your call to keep it simple), but the
       dashboard indicator for events like this will be misleading until we
       pick one.
-- [ ] **Event description + image source.** For the three real sign-ups,
+- [ ] **Event description + image source.** For real sign-ups so far,
       `header.description` is an empty trusted-value and `beforemessage` is
       blank — only a SignUpGenius theme banner (`og:image`) is available. Need
-      to confirm where a real description/thumbnail would come from in the API,
-      or decide the cron carries a small hand-maintained
-      `events.overrides.json` (title → description/image) in the cron repo.
+      to confirm where a real description/thumbnail would come from in the
+      API, or decide the backend carries a small hand-maintained
+      `events.overrides.json` (title → description/image).
 - [x] **Thu/Fri & event-day capacity** flows entirely from SignUpGenius. The
       canteen manager sets Thu/Fri quantities, and bumps slot quantities for
-      special "canteen event" days that need extra help. Cron never hard-codes
-      capacity.
-- [x] **Partial-failure policy:** skip failed events with a warning; after **3
-      failed events in one run**, email William; still publish the rest.
+      special "canteen event" days that need extra help. Backend never
+      hard-codes capacity.
+- [ ] **Failed-event threshold email.** DESIGN.md previously specced emailing
+      an admin after 3+ failed events in a run; not wired yet. `MailApp` is now
+      proven working (§7), so this is cheap to add if wanted.
 - [ ] **Footer content** — exact links and contact address.
-- [ ] **GitHub org** — create `beecroft-pnc` (or similar) vs personal account.
 - [ ] **Status thresholds** — validate 25 / 75 against a real term once live;
       decide whether an empty shift/role forces `red`.
 - [ ] **Term boundaries / holidays** — behaviour between terms (no published
@@ -438,19 +396,13 @@ Not built in v1; captured so the schema/repo choices don't block it.
 
 ---
 
-## 11. Decisions log
+## 10. Decisions log
 
-- SPA reads a single public `data.json`; SignUpGenius stays system of record.
-- Two repos: `bps-volunteer-ui`, `bps-volunteer-backend`. Originally planned
-  as three (`-ui`, `-cron`, `-data`); merged `-cron` and `-data` into
-  `bps-volunteer-backend` to avoid a cross-repo PAT (expires; needs manual
-  rotation) and the risk of GitHub's 60-day scheduled-workflow auto-disable
-  hitting a repo that only ever pushed to a *different* repo. Trade-off:
-  hourly data commits now live in the same repo as the fetcher's source code,
-  rather than isolated — accepted as the smaller cost.
-- `data.json` regenerated hourly, every day; cron never overwrites good data
-  with a failed run.
-- Data is **counts only, no names**. Names live only in the (later) email job.
+- SPA reads a single public JSON payload; SignUpGenius stays system of record.
+- Two repos: `bps-volunteer-ui`, `bps-volunteer-backend2`.
+- Backend runs hourly; never overwrites good data with a failed run.
+- Data is **counts only, no names**. Names live only in the canteen
+  notification email.
 - Canteen click-through = **deep link to the day** on SignUpGenius; slot
   selection + submit happen there. One-off click-through = plain event URL.
 - Canteen row: weekdays only, Fri→Mon (no weekend tiles), 5 visible then
@@ -462,13 +414,15 @@ Not built in v1; captured so the schema/repo choices don't block it.
   everywhere for v1.
 - Day rollover 15:00 Sydney (canteen); events drop at Sydney midnight after
   their date.
-- Stack: React + Vite + TypeScript + hand-written CSS. Friendly/rounded,
-  crest-blue. Status needs icon + label, not colour alone.
+- Stack: React + Vite + TypeScript + hand-written CSS. Firebase Hosting.
+  Friendly/rounded, crest-blue. Status needs icon + label, not colour alone.
 - SPA re-fetches every ~15 min + on focus; skeleton loading; localStorage
   fallback; 3h stale banner.
-- Notification email: designed, deferred; Gmail SMTP + App Password the likely
-  channel; 9am Sydney; canteen only; names included.
+- Canteen sign-up resolved automatically (title-prefix match) every run — no
+  manual sign-up ID anywhere.
+- Notification email: built via Apps Script `MailApp` — free, no
+  SMTP/app-password. Recipients configurable list; canteen only; names
+  included.
 - Capacity (incl. Thu/Fri and special canteen-event days) always flows from
-  SignUpGenius slot quantities; cron never hard-codes it.
-- After 3 failed events in a run, cron emails William and publishes the rest.
+  SignUpGenius slot quantities; backend never hard-codes it.
 - Empty `events` → UI shows a placeholder message, not an empty grid.
