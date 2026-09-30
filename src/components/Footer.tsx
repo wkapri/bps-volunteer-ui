@@ -37,8 +37,18 @@ export function Footer({ data }: { data: VolunteerData | null }) {
             <a href="mailto:beecroft.pcsecretary@gmail.com">Contact the P&amp;C</a>
           </nav>
           <p className="site-footer__note">
-            This dashboard is a shortcut to SignUpGenius, where all sign-ups happen. Not an official
-            school system.
+            This dashboard is a shortcut to SignUpGenius. Not an official school system.
+          </p>
+          <p className="site-footer__credit">
+            Built by{" "}
+            <a href="https://www.linkedin.com/in/william-c-kwok" target="_blank" rel="noopener noreferrer">
+              William Kwok
+            </a>{" "}
+            (
+            <a href="https://github.com/wkapri/bps-volunteer-ui" target="_blank" rel="noopener noreferrer">
+              view source
+            </a>
+            )
           </p>
         </div>
 
