@@ -140,7 +140,8 @@ Workspace), so ownership survives volunteers rotating out.
 **Canteen days included:** weekdays only (Mon–Fri). Sat/Sun are never emitted —
 the UI shows Friday then Monday. A day is emitted for every weekday from "today"
 (per the 3pm rule below) up to the last date SignUpGenius has published slots
-for.
+for, capped at `CANTEEN_DAYS_AHEAD` calendar days from today (Script Property,
+default 14 — about 10 weekdays).
 
 **"Closed" detection:** a weekday **within the published window** (≤ the latest
 canteen slot date) that has **zero slots** in the source data → `status:
@@ -173,7 +174,10 @@ midnight** after the event date passes. Sorted **soonest first** in the UI.
 (`Canteen Volunteer*`) against the live active sign-ups list — fully automatic,
 every run. The canteen manager follows a runbook to name each term's sign-up
 consistently. No manual sign-up ID anywhere; a new term's sign-up or a new event
-is picked up on the next hourly run with zero config changes.
+is picked up on the next hourly run with zero config changes. If several
+sign-ups match (next term created early), the current one is used — earliest
+start among those not yet finished — and the rest are excluded from the events
+list until their turn.
 
 **Event capacity math:** from a single `/signups/report/all/{signupid}/` call
 per event (fallback path — the public sheet endpoint is tried first). `capacity`
