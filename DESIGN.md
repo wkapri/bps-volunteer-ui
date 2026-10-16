@@ -316,12 +316,14 @@ event-level percentage.
 Built in `bps-volunteer-backend2` (`Notify.js`, `sendCanteenSummary`).
 
 - **When:** optional daily trigger (`setupNotifyTrigger`, ~9pm Sydney); can
-  also be run manually.
+  also be run manually. No email on Friday or Saturday nights.
 - **Content:** upcoming canteen sign-ups — **names, phone, email per shift**
   (this job calls the SignUpGenius key API directly; names never enter the
-  public `data.json`).
-- **Window:** configurable via `NOTIFY_DAYS_AHEAD` Script Property (default 7
-  days ahead).
+  public `data.json`). Every shift with a slot is listed; a shift nobody has
+  signed up for says "no volunteers".
+- **Window:** starts **tomorrow** (the email goes out in the evening, so today
+  is already done) through today + `NOTIFY_DAYS_AHEAD` days (Script Property,
+  default 7). No slots in the window → no email.
 - **Scope:** canteen only. No one-off events.
 - **Channel:** email via Apps Script's `MailApp` — free under the Workspace, no
   SMTP/app-password setup.
