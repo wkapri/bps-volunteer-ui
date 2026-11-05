@@ -169,6 +169,9 @@ shift/critical role is completely empty).
 **Events included:** every active one-off in the SignUpGenius account that is
 **not** the canteen sign-up. Shown regardless of how far out. Dropped at **Sydney
 midnight** after the event date passes. Sorted **soonest first** in the UI.
+A sign-up with several slot dates (e.g. a uniform shop roster) stays listed
+until its **last** slot passes; its `date` is the next upcoming slot, and
+`capacity`/`filled` count only upcoming slots.
 
 **Identifying the canteen sign-up:** match a configurable title prefix
 (`Canteen Volunteer*`) against the live active sign-ups list — fully automatic,
