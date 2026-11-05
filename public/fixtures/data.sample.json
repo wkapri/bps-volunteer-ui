@@ -147,6 +147,7 @@
       "id": 99999001,
       "title": "Trivia Night",
       "date": "2026-10-18",
+      "dates": ["2026-10-18", "2026-10-25", "2026-11-01", "2026-11-08", "2026-11-15"],
       "description": "Our biggest fundraiser of the year. We need help on the door, running the bar, and selling raffle tickets on the night.",
       "imageUrl": "https://www.signupgenius.com/images/theme/8C1B4F4B1C53021B741F9E11AEDDAC42_0.jpg",
       "signupUrl": "https://www.signupgenius.com/go/00000000000000000-99999001-trivia",
