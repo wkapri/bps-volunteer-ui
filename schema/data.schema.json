@@ -79,6 +79,7 @@
         "id": { "type": "integer" },
         "title": { "type": "string" },
         "date": { "type": "string", "format": "date" },
+        "dates": { "type": "array", "items": { "type": "string", "format": "date" }, "minItems": 2 },
         "description": { "type": ["string", "null"] },
         "imageUrl": { "type": ["string", "null"] },
         "signupUrl": { "type": "string", "format": "uri" },

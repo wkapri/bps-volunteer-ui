@@ -8,7 +8,7 @@ numbers are synthetic** so every UI state is exercised. Contract: `../../DESIGN.
 
 | File | Exercises |
 |---|---|
-| `data.sample.json` | The normal case. 15 canteen days incl. a closed Wed, a 0% red day, 100% green days, amber days, and a boosted-capacity "canteen event day". 3 events: amber (synthetic Trivia), red (Working Bee — naive Σqty, see §9), green (Disco). |
+| `data.sample.json` | The normal case. 15 canteen days incl. a closed Wed, a 0% red day, 100% green days, amber days, and a boosted-capacity "canteen event day". 3 events: amber (synthetic Trivia, 5 dates: exercises "+N more"), red (Working Bee — naive Σqty, see §9), green (Disco). |
 | `data.empty-events.json` | Canteen running, `events: []` → "no upcoming events" placeholder. |
 | `data.between-terms.json` | `canteen.days: []` (next term not published) → "next term not open yet" message; events still shown. |
 | `data.stale.json` | Same as sample but `generatedAt` ~7h old → stale-data banner. |

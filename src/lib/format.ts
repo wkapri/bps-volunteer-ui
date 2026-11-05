@@ -29,6 +29,19 @@ export function fullDate(isoDate: string): string {
   }).format(parseISODate(isoDate));
 }
 
+/** "Tue 10 Nov", or "Tue 16 Nov 2027" when the year isn't the current one (Sydney). */
+export function shortDate(isoDate: string): string {
+  const year = (d: Date) => new Intl.DateTimeFormat("en-AU", { year: "numeric", timeZone: SYDNEY }).format(d);
+  const d = parseISODate(isoDate);
+  return new Intl.DateTimeFormat("en-AU", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    ...(year(d) !== year(new Date()) ? { year: "numeric" as const } : {}),
+    timeZone: SYDNEY,
+  }).format(d);
+}
+
 /** "12:03 pm, 10 Sep" */
 export function timestamp(iso: string): string {
   return new Intl.DateTimeFormat("en-AU", {

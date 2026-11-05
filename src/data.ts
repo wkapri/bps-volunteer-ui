@@ -44,7 +44,8 @@ export interface Canteen {
 export interface VolunteerEvent {
   id: number;
   title: string;
-  date: string; // ISO date, Sydney (v1: one event = one date)
+  date: string; // ISO date, Sydney. For a multi-date sign-up: the next upcoming slot
+  dates?: string[]; // only on multi-date sign-ups: all upcoming slot dates, soonest first
   description: string | null;
   imageUrl: string | null;
   signupUrl: string;

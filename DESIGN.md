@@ -116,7 +116,8 @@ Workspace), so ownership survives volunteers rotating out.
     {
       "id": 63999001,
       "title": "Trivia Night",
-      "date": "2026-10-18",            // single date (v1 assumes one event = one date)
+      "date": "2026-10-18",            // single date; for a multi-date sign-up, the next upcoming slot
+      // "dates": ["2026-10-18", "2026-10-25"],  // present only on multi-date sign-ups (2+), all upcoming slot dates
       "description": "Our biggest fundraiser of the year — grab a table!",
       "imageUrl": "https://cdn.signupgenius.com/.../thumb.jpg",
       "signupUrl": "https://www.signupgenius.com/go/....",
@@ -170,7 +171,8 @@ shift/critical role is completely empty).
 **not** the canteen sign-up. Shown regardless of how far out. Dropped at **Sydney
 midnight** after the event date passes. Sorted **soonest first** in the UI.
 A sign-up with several slot dates (e.g. a uniform shop roster) stays listed
-until its **last** slot passes; its `date` is the next upcoming slot, and
+until its **last** slot passes; its `date` is the next upcoming slot, `dates`
+lists all upcoming slot dates (only present when there are 2 or more), and
 `capacity`/`filled` count only upcoming slots.
 
 **Identifying the canteen sign-up:** match a configurable title prefix
@@ -279,7 +281,12 @@ event-level percentage.
     arrow buttons on ≥ 768px**. Scrolls to end of published term.
 - **Events grid:** card = thumbnail, title, date, status (colour + icon +
   label + `filled/capacity (pct%)`), short description. Whole card links to
-  `signupUrl` (new tab). Responsive grid, soonest first. **If `events` is
+  `signupUrl` (new tab). Responsive grid, soonest first. A multi-date sign-up
+  shows its first 3 dates ("Tue, 10 Nov · Thu, 19 Nov · Tue, 24 Nov") plus a
+  plain-text "+N more" if there are more; the full list is in the tooltip and
+  `aria-label`, not a separate link (the whole card is already the link).
+  Images sit in a fixed 3:2 box, shown whole (never cropped); a sign-up with no
+  usable image gets a default image. **If `events` is
   empty**, show a friendly placeholder ("No upcoming events right now — check
   back soon") instead of the grid.
 - **Footer:** `generatedAt` rendered in Sydney local format; links (full
